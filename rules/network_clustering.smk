@@ -36,10 +36,17 @@ def _get_clustering_config(wildcards):
     
     if not isinstance(clustering, dict):
         return {}
-    
-    # Return all config except 'enabled' and 'method' which are handled separately
-    return {k: v for k, v in clustering.items() 
-            if k not in ['enabled', 'method']}
+
+    # Backward-compat: some scenarios store method options under `clustering.config`
+    # while newer presets place options at the top level.
+    nested_config = clustering.get('config', {})
+    if not isinstance(nested_config, dict):
+        nested_config = {}
+
+    top_level = {k: v for k, v in clustering.items() if k not in ['enabled', 'method', 'config']}
+
+    # Top-level keys win if both are provided.
+    return {**nested_config, **top_level}
 
 
 def _get_clustered_network_output(wildcards):
@@ -84,9 +91,12 @@ def _get_clustering_boundaries(wildcards):
     method = clustering.get('method', '')
     if method != 'spatial':
         return []
-    
-    # boundaries_path is now at top level (resolved by config_loader)
-    boundaries = clustering.get('boundaries_path', '')
+
+    # Support both:
+    # - clustering.boundaries_path (preset-resolved form)
+    # - clustering.config.boundaries_path (inline legacy form)
+    nested_config = clustering.get('config', {}) if isinstance(clustering.get('config', {}), dict) else {}
+    boundaries = clustering.get('boundaries_path', '') or nested_config.get('boundaries_path', '')
     
     if not boundaries:
         return []
@@ -108,9 +118,10 @@ def _get_clustering_busmap(wildcards):
     method = clustering.get('method', '')
     if method != 'busmap':
         return []
-    
-    # busmap_source is now at top level (resolved by config_loader)
-    busmap = clustering.get('busmap_source', '')
+
+    # Support both top-level and nested config forms.
+    nested_config = clustering.get('config', {}) if isinstance(clustering.get('config', {}), dict) else {}
+    busmap = clustering.get('busmap_source', '') or nested_config.get('busmap_source', '')
     
     if not busmap:
         return []
